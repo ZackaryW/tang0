@@ -1,0 +1,5 @@
+# Exclude memory bank documentation
+memory-bank/
+
+# Exclude example folder
+example/
