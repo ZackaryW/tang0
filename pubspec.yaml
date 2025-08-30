@@ -1,6 +1,6 @@
 name: tang0
-description: "cross tab communication boilerplate"
-version: 0.0.1
+description: "A Flutter web package for effortless cross-tab communication using BroadcastChannel API"
+version: 0.0.2
 homepage: https://github.com/ZackaryW/tang0
 
 environment:

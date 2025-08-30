@@ -2,24 +2,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tang0/src/top0.dart';
 
 void main() {
-  // Constant test tokens for deterministic testing
-  const testSignToken = 'test_sign_token_16';
-  const testXorToken = 'test_xor_token_16_';
-
-  // Helper functions that use the test tokens
-  String testSign(String command, String data) =>
-      signWithTokens(command, data, testSignToken, testXorToken);
-
-  bool testVerifyCommand(String signedString, String expectedCommand) =>
-      verifyCommandWithTokens(signedString, expectedCommand, testXorToken);
-
-  String? testMatchCommand(
-    String signedString,
-    List<String> expectedCommands,
-  ) => matchCommandWithTokens(signedString, expectedCommands, testXorToken);
-
-  String? testVerifyData(String signedString) =>
-      verifyDataWithTokens(signedString, testSignToken, testXorToken);
 
   group('HMAC Signing and Verification Tests', () {
     test('Basic sign and verify flow', () {
@@ -27,17 +9,17 @@ void main() {
       const data = 'world';
 
       // Sign the data using test tokens
-      final signedString = testSign(command, data);
+      final signedString = sign(command, data);
 
       // Verify the signed string has correct length
       expect(signedString.length, equals(115 + data.length));
 
       // Verify command
-      final isValidCommand = testVerifyCommand(signedString, command);
+      final isValidCommand = verifyCommand(signedString, command);
       expect(isValidCommand, isTrue);
 
       // Verify and extract data
-      final extractedData = testVerifyData(signedString);
+      final extractedData = verifyData(signedString);
       expect(extractedData, equals(data));
     });
 
@@ -45,25 +27,25 @@ void main() {
       const command = 'test_command';
       const data = 'test_data';
 
-      final signedString = testSign(command, data);
+      final signedString = sign(command, data);
 
       // Correct command should pass
-      expect(testVerifyCommand(signedString, command), isTrue);
+      expect(verifyCommand(signedString, command), isTrue);
 
       // Wrong command should fail
-      expect(testVerifyCommand(signedString, 'wrong_command'), isFalse);
-      expect(testVerifyCommand(signedString, 'test_comman'), isFalse);
-      expect(testVerifyCommand(signedString, ''), isFalse);
+      expect(verifyCommand(signedString, 'wrong_command'), isFalse);
+      expect(verifyCommand(signedString, 'test_comman'), isFalse);
+      expect(verifyCommand(signedString, ''), isFalse);
     });
 
     test('Command matching with list of expected commands', () {
       const command = 'hello_world';
       const data = 'test_data';
 
-      final signedString = testSign(command, data);
+      final signedString = sign(command, data);
 
       // Should match the correct command from list
-      final matchedCommand = testMatchCommand(signedString, [
+      final matchedCommand = matchCommand(signedString, [
         'hello_world',
         'goodbye',
         'test',
@@ -71,7 +53,7 @@ void main() {
       expect(matchedCommand, equals('hello_world'));
 
       // Should return null when no match
-      final noMatch = testMatchCommand(signedString, [
+      final noMatch = matchCommand(signedString, [
         'goodbye',
         'test',
         'other',
@@ -79,15 +61,15 @@ void main() {
       expect(noMatch, isNull);
 
       // Should work with single item list
-      final singleMatch = testMatchCommand(signedString, ['hello_world']);
+      final singleMatch = matchCommand(signedString, ['hello_world']);
       expect(singleMatch, equals('hello_world'));
 
       // Should return null for empty list
-      final emptyMatch = testMatchCommand(signedString, []);
+      final emptyMatch = matchCommand(signedString, []);
       expect(emptyMatch, isNull);
 
       // Should handle commands with different lengths
-      final mixedLengths = testMatchCommand(signedString, [
+      final mixedLengths = matchCommand(signedString, [
         'hi',
         'hello_world',
         'very_long_command_name',
@@ -98,22 +80,22 @@ void main() {
     test('Command matching edge cases', () {
       // Test with maximum length command
       const maxCommand = '12345678901234567890123456789012'; // 32 chars
-      final maxSigned = testSign(maxCommand, 'data');
-      final maxMatch = testMatchCommand(maxSigned, [maxCommand, 'short']);
+      final maxSigned = sign(maxCommand, 'data');
+      final maxMatch = matchCommand(maxSigned, [maxCommand, 'short']);
       expect(maxMatch, equals(maxCommand));
 
       // Test with single character command
       const singleChar = 'x';
-      final singleSigned = testSign(singleChar, 'data');
-      final singleMatch = testMatchCommand(singleSigned, ['a', 'x', 'z']);
+      final singleSigned = sign(singleChar, 'data');
+      final singleMatch = matchCommand(singleSigned, ['a', 'x', 'z']);
       expect(singleMatch, equals('x'));
 
       // Test invalid signed string
-      expect(testMatchCommand('invalid', ['test']), isNull);
+      expect(matchCommand('invalid', ['test']), isNull);
 
       // Test with command too long in list
       expect(
-        () => testMatchCommand(maxSigned, [
+        () => matchCommand(maxSigned, [
           'valid',
           'this_command_is_way_too_long_and_exceeds_32_characters',
         ]),
@@ -125,19 +107,19 @@ void main() {
       const command = 'secure_cmd';
       const data = 'payload_data';
 
-      final signedString = testSign(command, data);
+      final signedString = sign(command, data);
 
       // verifyCommand: requires exact command knowledge
-      expect(testVerifyCommand(signedString, 'secure_cmd'), isTrue);
-      expect(testVerifyCommand(signedString, 'wrong_cmd'), isFalse);
+      expect(verifyCommand(signedString, 'secure_cmd'), isTrue);
+      expect(verifyCommand(signedString, 'wrong_cmd'), isFalse);
 
       // matchCommand: discovers command from list without prior knowledge
       expect(
-        testMatchCommand(signedString, ['auth', 'secure_cmd', 'sync']),
+        matchCommand(signedString, ['auth', 'secure_cmd', 'sync']),
         equals('secure_cmd'),
       );
       expect(
-        testMatchCommand(signedString, ['auth', 'wrong_cmd', 'sync']),
+        matchCommand(signedString, ['auth', 'wrong_cmd', 'sync']),
         isNull,
       );
 
@@ -150,7 +132,7 @@ void main() {
         'secure_cmd',
         'update',
       ];
-      final discoveredCommand = testMatchCommand(signedString, commandList);
+      final discoveredCommand = matchCommand(signedString, commandList);
       expect(discoveredCommand, equals('secure_cmd'));
 
       // You can then use the discovered command for routing/filtering
@@ -162,79 +144,79 @@ void main() {
       const command = 'getData';
       const testData = 'This is some test data with special chars: !@#\$%^&*()';
 
-      final signedString = testSign(command, testData);
+      final signedString = sign(command, testData);
 
       // Should extract correct data
-      final extractedData = testVerifyData(signedString);
+      final extractedData = verifyData(signedString);
       expect(extractedData, equals(testData));
       expect(extractedData, isNotNull);
     });
 
     test('Empty and edge case data', () {
       // Empty data
-      final emptyDataSigned = testSign('cmd', '');
-      expect(testVerifyCommand(emptyDataSigned, 'cmd'), isTrue);
-      expect(testVerifyData(emptyDataSigned), equals(''));
+      final emptyDataSigned = sign('cmd', '');
+      expect(verifyCommand(emptyDataSigned, 'cmd'), isTrue);
+      expect(verifyData(emptyDataSigned), equals(''));
 
       // Single character data
-      final singleCharSigned = testSign('x', 'a');
-      expect(testVerifyCommand(singleCharSigned, 'x'), isTrue);
-      expect(testVerifyData(singleCharSigned), equals('a'));
+      final singleCharSigned = sign('x', 'a');
+      expect(verifyCommand(singleCharSigned, 'x'), isTrue);
+      expect(verifyData(singleCharSigned), equals('a'));
 
       // Long command (should throw exception)
       const longCommand =
           'this_is_a_very_long_command_that_exceeds_32_characters';
       expect(
-        () => testSign(longCommand, 'data'),
+        () => sign(longCommand, 'data'),
         throwsA(isA<ArgumentError>()),
       );
 
       // Also test verifyCommand with long command (need valid signed string)
-      final validSigned = testSign('test', 'data');
+      final validSigned = sign('test', 'data');
       expect(
-        () => testVerifyCommand(validSigned, longCommand),
+        () => verifyCommand(validSigned, longCommand),
         throwsA(isA<ArgumentError>()),
       );
 
       // Test maximum valid command length (exactly 32 chars)
       const maxCommand = '12345678901234567890123456789012'; // 32 chars
-      final maxCmdSigned = testSign(maxCommand, 'data');
-      expect(testVerifyCommand(maxCmdSigned, maxCommand), isTrue);
-      expect(testVerifyData(maxCmdSigned), equals('data'));
+      final maxCmdSigned = sign(maxCommand, 'data');
+      expect(verifyCommand(maxCmdSigned, maxCommand), isTrue);
+      expect(verifyData(maxCmdSigned), equals('data'));
     });
 
     test('Large data handling', () {
       const command = 'bigData';
       final largeData = 'x' * 1000; // 1000 character string
 
-      final signedString = testSign(command, largeData);
+      final signedString = sign(command, largeData);
 
       expect(signedString.length, equals(115 + largeData.length));
-      expect(testVerifyCommand(signedString, command), isTrue);
-      expect(testVerifyData(signedString), equals(largeData));
+      expect(verifyCommand(signedString, command), isTrue);
+      expect(verifyData(signedString), equals(largeData));
     });
 
     test('Invalid signed string handling', () {
       // Too short string
-      expect(testVerifyCommand('short', 'any'), isFalse);
-      expect(testVerifyData('short'), isNull);
+      expect(verifyCommand('short', 'any'), isFalse);
+      expect(verifyData('short'), isNull);
 
       // Exactly 114 chars (just under minimum)
       final tooShort = 'a' * 114;
-      expect(testVerifyCommand(tooShort, 'any'), isFalse);
-      expect(testVerifyData(tooShort), isNull);
+      expect(verifyCommand(tooShort, 'any'), isFalse);
+      expect(verifyData(tooShort), isNull);
 
       // Minimum valid length (115 chars)
-      final validSigned = testSign('test', '');
+      final validSigned = sign('test', '');
       expect(validSigned.length, equals(115));
-      expect(testVerifyCommand(validSigned, 'test'), isTrue);
+      expect(verifyCommand(validSigned, 'test'), isTrue);
     });
 
     test('Tampered data detection', () {
       const command = 'secure';
       const data = 'important_data';
 
-      final signedString = testSign(command, data);
+      final signedString = sign(command, data);
 
       // Tamper with different parts of the signed string
       final tamperedNonce = 'X${signedString.substring(1)}';
@@ -246,27 +228,27 @@ void main() {
           '${signedString.substring(0, 115)}X${signedString.substring(116)}';
 
       // All tampered versions should fail verification
-      expect(testVerifyData(tamperedNonce), isNull);
-      expect(testVerifyData(tamperedSignature), isNull);
-      expect(testVerifyCommand(tamperedCommand, command), isFalse);
-      expect(testVerifyData(tamperedData), isNull);
+      expect(verifyData(tamperedNonce), isNull);
+      expect(verifyData(tamperedSignature), isNull);
+      expect(verifyCommand(tamperedCommand, command), isFalse);
+      expect(verifyData(tamperedData), isNull);
     });
 
     test('Multiple signing produces different results', () {
       const command = 'test';
       const data = 'data';
 
-      final signed1 = testSign(command, data);
-      final signed2 = testSign(command, data);
+      final signed1 = sign(command, data);
+      final signed2 = sign(command, data);
 
       // Different signatures due to different nonces
       expect(signed1, isNot(equals(signed2)));
 
       // But both should verify correctly
-      expect(testVerifyCommand(signed1, command), isTrue);
-      expect(testVerifyCommand(signed2, command), isTrue);
-      expect(testVerifyData(signed1), equals(data));
-      expect(testVerifyData(signed2), equals(data));
+      expect(verifyCommand(signed1, command), isTrue);
+      expect(verifyCommand(signed2, command), isTrue);
+      expect(verifyData(signed1), equals(data));
+      expect(verifyData(signed2), equals(data));
 
       // Nonces should be different
       final nonce1 = signed1.substring(0, 19);
@@ -278,17 +260,17 @@ void main() {
       const command = 'unicode_test';
       const unicodeData = 'Hello 世界! 🌟 émojis and spéciål chars: ñáéíóú';
 
-      final signedString = testSign(command, unicodeData);
+      final signedString = sign(command, unicodeData);
 
-      expect(testVerifyCommand(signedString, command), isTrue);
-      expect(testVerifyData(signedString), equals(unicodeData));
+      expect(verifyCommand(signedString, command), isTrue);
+      expect(verifyData(signedString), equals(unicodeData));
     });
 
     test('Signed string format validation', () {
       const command = 'format_test';
       const data = 'test_data_123';
 
-      final signedString = testSign(command, data);
+      final signedString = sign(command, data);
 
       // Check format: nonce(19) + signature(64) + xor_cmd(32) + xor_data(variable)
       expect(signedString.length, equals(115 + data.length));
@@ -334,10 +316,10 @@ void main() {
   }
 }''';
 
-      final signed = testSign(command, jsonData);
-      expect(testVerifyCommand(signed, command), isTrue);
+      final signed = sign(command, jsonData);
+      expect(verifyCommand(signed, command), isTrue);
 
-      final extractedData = testVerifyData(signed);
+      final extractedData = verifyData(signed);
       expect(extractedData, equals(jsonData));
       expect(extractedData, contains('"user"'));
       expect(extractedData, contains('"preferences"'));
@@ -357,10 +339,10 @@ SECRET_TOKEN=super_secret_key_here
 DEBUG=false
 PORT=3000''';
 
-      final signed = testSign(command, envData);
-      expect(testVerifyCommand(signed, command), isTrue);
+      final signed = sign(command, envData);
+      expect(verifyCommand(signed, command), isTrue);
 
-      final extractedData = testVerifyData(signed);
+      final extractedData = verifyData(signed);
       expect(extractedData, equals(envData));
       expect(extractedData, contains('DATABASE_URL='));
       expect(extractedData, contains('API_KEY='));
@@ -371,9 +353,9 @@ PORT=3000''';
       const base64Data =
           'SGVsbG8gV29ybGQhIFRoaXMgaXMgYSB0ZXN0IG1lc3NhZ2UgZW5jb2RlZCBpbiBCYXNlNjQuIEl0IGNvbnRhaW5zIHNwZWNpYWwgY2hhcmFjdGVyczogISQmKCkrLz1bXXt9fjwhPj48Ojo=';
 
-      final signed = testSign(command, base64Data);
-      expect(testVerifyCommand(signed, command), isTrue);
-      expect(testVerifyData(signed), equals(base64Data));
+      final signed = sign(command, base64Data);
+      expect(verifyCommand(signed, command), isTrue);
+      expect(verifyData(signed), equals(base64Data));
     });
 
     test('XML data handling', () {
@@ -394,9 +376,9 @@ PORT=3000''';
   </metadata>
 </root>''';
 
-      final signed = testSign(command, xmlData);
-      expect(testVerifyCommand(signed, command), isTrue);
-      expect(testVerifyData(signed), equals(xmlData));
+      final signed = sign(command, xmlData);
+      expect(verifyCommand(signed, command), isTrue);
+      expect(verifyData(signed), equals(xmlData));
     });
 
     test('CSV data handling', () {
@@ -408,9 +390,9 @@ Bob Johnson,35,bob.johnson@company.com,Sales,70000
 Alice Wilson,32,alice.wilson@company.com,HR,60000
 "Charlie Brown",29,"charlie.brown@company.com","Product Management",80000''';
 
-      final signed = testSign(command, csvData);
-      expect(testVerifyCommand(signed, command), isTrue);
-      expect(testVerifyData(signed), equals(csvData));
+      final signed = sign(command, csvData);
+      expect(verifyCommand(signed, command), isTrue);
+      expect(verifyData(signed), equals(csvData));
     });
 
     test('URL and query parameters', () {
@@ -418,9 +400,9 @@ Alice Wilson,32,alice.wilson@company.com,HR,60000
       const urlData =
           'https://api.example.com/users?id=123&include=profile,preferences&sort=created_at&order=desc&limit=50&offset=0&filter[status]=active&filter[role]=admin&api_key=abc123&timestamp=1693305000';
 
-      final signed = testSign(command, urlData);
-      expect(testVerifyCommand(signed, command), isTrue);
-      expect(testVerifyData(signed), equals(urlData));
+      final signed = sign(command, urlData);
+      expect(verifyCommand(signed, command), isTrue);
+      expect(verifyData(signed), equals(urlData));
     });
 
     test('Binary-like data (hex strings)', () {
@@ -428,9 +410,9 @@ Alice Wilson,32,alice.wilson@company.com,HR,60000
       const hexData =
           'deadbeef48656c6c6f20576f726c6421000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f';
 
-      final signed = testSign(command, hexData);
-      expect(testVerifyCommand(signed, command), isTrue);
-      expect(testVerifyData(signed), equals(hexData));
+      final signed = sign(command, hexData);
+      expect(verifyCommand(signed, command), isTrue);
+      expect(verifyData(signed), equals(hexData));
     });
 
     test('Configuration file data (TOML-like)', () {
@@ -461,9 +443,9 @@ cache_ttl = 300
 enable_metrics = true
 metrics_endpoint = "/metrics"''';
 
-      final signed = testSign(command, configData);
-      expect(testVerifyCommand(signed, command), isTrue);
-      expect(testVerifyData(signed), equals(configData));
+      final signed = sign(command, configData);
+      expect(verifyCommand(signed, command), isTrue);
+      expect(verifyData(signed), equals(configData));
     });
 
     test('SQL query data', () {
@@ -482,9 +464,9 @@ HAVING total_spent > 100
 ORDER BY total_spent DESC, u.created_at ASC
 LIMIT 50;''';
 
-      final signed = testSign(command, sqlData);
-      expect(testVerifyCommand(signed, command), isTrue);
-      expect(testVerifyData(signed), equals(sqlData));
+      final signed = sign(command, sqlData);
+      expect(verifyCommand(signed, command), isTrue);
+      expect(verifyData(signed), equals(sqlData));
     });
 
     test('Log file entries', () {
@@ -501,9 +483,9 @@ LIMIT 50;''';
   at Server.listen (server.js:789)
 2025-08-29 10:30:30 [INFO] Request processed successfully: GET /api/users/123''';
 
-      final signed = testSign(command, logData);
-      expect(testVerifyCommand(signed, command), isTrue);
-      expect(testVerifyData(signed), equals(logData));
+      final signed = sign(command, logData);
+      expect(verifyCommand(signed, command), isTrue);
+      expect(verifyData(signed), equals(logData));
     });
 
     test('Mixed content with special characters', () {
@@ -531,11 +513,11 @@ Shell command: curl -X POST "https://api.com/data" -H "Content-Type: application
 
 Environment: \$HOME/.config/app.conf''';
 
-      final signed = testSign(command, mixedData);
-      expect(testVerifyCommand(signed, command), isTrue);
-      expect(testVerifyData(signed), equals(mixedData));
-      expect(testVerifyData(signed), contains('🌟'));
-      expect(testVerifyData(signed), contains('世界'));
+      final signed = sign(command, mixedData);
+      expect(verifyCommand(signed, command), isTrue);
+      expect(verifyData(signed), equals(mixedData));
+      expect(verifyData(signed), contains('🌟'));
+      expect(verifyData(signed), contains('世界'));
     });
 
     test('Very large structured data', () {
@@ -567,12 +549,12 @@ Environment: \$HOME/.config/app.conf''';
 
       final largeData = buffer.toString();
 
-      final signed = testSign(command, largeData);
+      final signed = sign(command, largeData);
       expect(signed.length, equals(115 + largeData.length));
-      expect(testVerifyCommand(signed, command), isTrue);
-      expect(testVerifyData(signed), equals(largeData));
+      expect(verifyCommand(signed, command), isTrue);
+      expect(verifyData(signed), equals(largeData));
       expect(
-        testVerifyData(signed)!.length,
+        verifyData(signed)!.length,
         greaterThan(10000),
       ); // Should be quite large
     });
@@ -583,9 +565,9 @@ Environment: \$HOME/.config/app.conf''';
       final controlData =
           'Start\x00null\x01SOH\x02STX\x03ETX\x04EOT\x05ENQ\x06ACK\x07BEL\x08BS\x09TAB\x0ALF\x0BVT\x0CFF\x0DCR\x0ESO\x0FSI\x10DLE\x11DC1\x12DC2\x13DC3\x14DC4\x15NAK\x16SYN\x17ETB\x18CAN\x19EM\x1ASUB\x1BESC\x1CFS\x1DGS\x1ERS\x1FUS\x7FDEL\x80\xFF\xFE\xFDEnd';
 
-      final signed = testSign(command, controlData);
-      expect(testVerifyCommand(signed, command), isTrue);
-      expect(testVerifyData(signed), equals(controlData));
+      final signed = sign(command, controlData);
+      expect(verifyCommand(signed, command), isTrue);
+      expect(verifyData(signed), equals(controlData));
     });
 
     test('Performance with multiple rapid signings', () {
@@ -597,7 +579,7 @@ Environment: \$HOME/.config/app.conf''';
 
       // Sign 100 times rapidly
       for (int i = 0; i < 100; i++) {
-        final signed = testSign(command, '$data $i');
+        final signed = sign(command, '$data $i');
         results.add(signed);
       }
 
@@ -609,8 +591,8 @@ Environment: \$HOME/.config/app.conf''';
 
       // All should verify correctly
       for (int i = 0; i < results.length; i++) {
-        expect(testVerifyCommand(results[i], command), isTrue);
-        expect(testVerifyData(results[i]), equals('$data $i'));
+        expect(verifyCommand(results[i], command), isTrue);
+        expect(verifyData(results[i]), equals('$data $i'));
       }
 
       // Should complete in reasonable time (less than 1 second)

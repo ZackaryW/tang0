@@ -3,16 +3,27 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-// Secure storage instance
-const _storage = FlutterSecureStorage();
+// Secure storage instance (only initialized if needed)
+FlutterSecureStorage? _storage;
 
 // Token storage keys
 const String _signTokenKey = 'tang0_sign_token';
 const String _xorTokenKey = 'tang0_xor_token';
 
-// Cached tokens (will be loaded from secure storage)
+// Fallback tokens for when secure storage is unavailable (less secure but functional)
+const String _fallbackSignToken = 'tang0_fallback_sign_key_2025';
+const String _fallbackXorToken = 'tang0_fallback_xor_key_2025';
+
+// Cached tokens (will be loaded from secure storage or fallback)
 String? _signToken;
 String? _xorToken;
+bool _isInitialized = false;
+
+// Optional security functions for users who want true encryption beyond XOR for DATA only
+// These functions handle data encryption/decryption, commands always use XOR
+Function? optionalSecurityEncrypt; // (String data, String nonce) -> String
+Function?
+optionalSecurityDecrypt; // (String encryptedData, String nonce) -> String
 
 /// Generates a random key using letters and numbers
 String _generateRandomKey(int length) {
@@ -27,38 +38,70 @@ String _generateRandomKey(int length) {
   );
 }
 
-/// Initialize tokens from secure storage or generate new ones
+/// Initialize tokens from secure storage
+///
+/// Attempts to load tokens from secure storage. If secure storage is unavailable
+/// or fails, throws a StateError to alert the user of the security issue.
+///
+/// If this function is never called, Tang0 will automatically use predefined
+/// fallback tokens (reduced security but maintained functionality).
+///
+/// Throws [StateError] if secure storage initialization fails.
 Future<void> initializeTang0Tokens() async {
-  _signToken = await _storage.read(key: _signTokenKey);
-  _xorToken = await _storage.read(key: _xorTokenKey);
+  _isInitialized = true;
 
-  // If tokens don't exist, generate new ones and store them
-  if (_signToken == null) {
-    _signToken = _generateRandomKey(16);
-    await _storage.write(key: _signTokenKey, value: _signToken!);
-  }
+  try {
+    // Initialize secure storage only when needed
+    _storage = const FlutterSecureStorage();
 
-  if (_xorToken == null) {
-    _xorToken = _generateRandomKey(16);
-    await _storage.write(key: _xorTokenKey, value: _xorToken!);
+    _signToken = await _storage!.read(key: _signTokenKey);
+    _xorToken = await _storage!.read(key: _xorTokenKey);
+
+    // If tokens don't exist in secure storage, generate new ones and store them
+    if (_signToken == null) {
+      _signToken = _generateRandomKey(16);
+      await _storage!.write(key: _signTokenKey, value: _signToken!);
+    }
+
+    if (_xorToken == null) {
+      _xorToken = _generateRandomKey(16);
+      await _storage!.write(key: _xorTokenKey, value: _xorToken!);
+    }
+  } catch (e) {
+    // Throw error if secure storage fails during initialization
+    // This ensures users are aware of security issues
+    throw StateError(
+      'Tang0: Failed to initialize secure storage. This may indicate '
+      'browser security restrictions or storage issues. Error: $e',
+    );
   }
 }
 
-/// Get the sign token (ensure tokens are initialized first)
+/// Get the sign token (uses fallback if not initialized)
 String _getSignToken() {
+  if (!_isInitialized) {
+    // Use fallback token if initializeTang0Tokens() was never called
+    return _fallbackSignToken;
+  }
+
   if (_signToken == null) {
     throw StateError(
-      'Tang0 tokens not initialized. Call initializeTang0Tokens() first.',
+      'Tang0 tokens failed to initialize. Check secure storage availability.',
     );
   }
   return _signToken!;
 }
 
-/// Get the XOR token (ensure tokens are initialized first)
+/// Get the XOR token (uses fallback if not initialized)
 String _getXorToken() {
+  if (!_isInitialized) {
+    // Use fallback token if initializeTang0Tokens() was never called
+    return _fallbackXorToken;
+  }
+
   if (_xorToken == null) {
     throw StateError(
-      'Tang0 tokens not initialized. Call initializeTang0Tokens() first.',
+      'Tang0 tokens failed to initialize. Check secure storage availability.',
     );
   }
   return _xorToken!;
@@ -120,7 +163,11 @@ String signWithTokens(
   final digest = hmacSha256.convert(bytes);
 
   final xorcmd = _xorStrings(command, _xorStrings(xorToken, nonce));
-  final xordata = _xorStrings(data, _xorStrings(xorToken, nonce));
+
+  // Use optional encryption for data if provided, otherwise use XOR
+  final xordata = optionalSecurityEncrypt != null
+      ? optionalSecurityEncrypt!(data, nonce)
+      : _xorStrings(data, _xorStrings(xorToken, nonce));
 
   return nonce + digest.toString() + xorcmd + xordata;
 }
@@ -260,8 +307,10 @@ String? verifyDataWithTokens(
   final signature = signedString.substring(19, 83);
   final xorData = signedString.substring(115);
 
-  // Decrypt XOR data to get original data
-  final originalData = _xorStrings(xorData, _xorStrings(xorToken, nonce));
+  // Use optional decryption for data if provided, otherwise use XOR
+  final originalData = optionalSecurityDecrypt != null
+      ? optionalSecurityDecrypt!(xorData, nonce)
+      : _xorStrings(xorData, _xorStrings(xorToken, nonce));
 
   // Verify the signature
   final dataWithNonce = originalData + nonce;

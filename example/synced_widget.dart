@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:tang0/src/templates/synced_widget.dart';
-import 'package:tang0/src/helper/synced_widget.dart';
+import 'package:tang0/tang0.dart';
 
 void main() {
+  initializeTang0Tokens();
   runApp(const MyApp());
 }
 
