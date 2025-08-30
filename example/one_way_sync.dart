@@ -486,14 +486,17 @@ class _ReceiverPageState extends State<ReceiverPage> {
                                     itemBuilder: (context, index) {
                                       final message = _receivedMessages[index];
                                       Color messageColor = Colors.black;
-                                      if (message.contains('UserEvent'))
+                                      if (message.contains('UserEvent')) {
                                         messageColor = Colors.blue;
-                                      else if (message.contains('Notification'))
+                                      } else if (message.contains(
+                                        'Notification',
+                                      )) {
                                         messageColor = Colors.green;
-                                      else if (message.contains('Command'))
+                                      } else if (message.contains('Command')) {
                                         messageColor = Colors.purple;
-                                      else if (message.contains('Status'))
+                                      } else if (message.contains('Status')) {
                                         messageColor = Colors.orange;
+                                      }
 
                                       return Padding(
                                         padding: const EdgeInsets.symmetric(

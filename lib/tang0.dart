@@ -58,6 +58,7 @@
 ///     return Column(children: [counter.controls()]);
 ///   })
 /// ```
+library;
 
 // Core Tang0 channel functionality
 export 'src/channel.dart';
