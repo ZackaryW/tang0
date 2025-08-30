@@ -229,38 +229,6 @@ Then:
 1. Click "Open New Tab"
 2. Change values in one tab and watch them sync to others
 
-## Troubleshooting
-
-### "Tang0 tokens not initialized" Error
-Make sure to call `initializeTang0Tokens()` before using any Tang0 features:
-
-```dart
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await initializeTang0Tokens(); // Add this line
-  runApp(MyApp());
-}
-```
-
-### Secure Storage Issues
-If you see "Secure storage unavailable" warnings, Tang0 automatically falls back to predefined tokens. This maintains functionality but reduces security. Consider:
-
-- Checking browser security settings
-- Testing in different browsers
-- Using HTTPS in production
-
-### Messages Not Received
-- Ensure all tabs call `initializeTang0Tokens()`
-- Verify command strings match exactly between sender and receiver
-- Check that channel names match (if specified)
-- Make sure deserializers are provided for custom types
-
-### Custom Encryption Issues
-- Ensure your encrypt/decrypt functions are symmetric (encrypt → decrypt = original data)
-- Verify your functions handle the nonce parameter correctly
-- Test your encryption functions independently before using with Tang0
-- Remember that commands always use XOR regardless of your custom functions
-
 ## Web Only
 
 Tang0 only works in web browsers because it uses the BroadcastChannel API. Mobile and desktop platforms don't support cross-tab communication.

@@ -1,3 +1,7 @@
+## 0.0.3
+* minor wording update
+
+
 ## 0.0.2
 
 * Users can now set `optionalSecurityEncrypt` and `optionalSecurityDecrypt` for enhanced data security
