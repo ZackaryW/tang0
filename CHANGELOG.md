@@ -1,6 +1,8 @@
+## 0.1.0
+* supporting async message handlers with error strategies
+
 ## 0.0.3
 * minor wording update
-
 
 ## 0.0.2
 

@@ -1,7 +1,8 @@
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/widgets.dart';
 import 'package:tang0/src/channel.dart';
 import 'package:tang0/src/top0.dart';
-import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:web/web.dart' as web;
 
@@ -335,13 +336,17 @@ class _SyncedWidgetState extends State<SyncedWidget> {
 ///
 /// This class extends [Tang0Receive] to process JSON messages containing
 /// synchronized variable state updates.
+///
+/// Uses [Tang0ErrorStrategy.print] for error handling by default.
 class _SyncReceiver extends Tang0Receive {
   /// Callback function called when valid sync data is received.
-  final void Function(Map<String, dynamic>, web.MessageEvent) onDataReceived;
+  /// Can be either synchronous or asynchronous.
+  final FutureOr<void> Function(Map<String, dynamic>, web.MessageEvent)
+  onDataReceived;
 
   /// Creates a new sync message receiver.
   ///
-  /// [onDataReceived] - Function to call with deserialized sync data.
+  /// [onDataReceived] - Function to call with deserialized sync data (sync or async).
   _SyncReceiver({required this.onDataReceived}) : super(isJson: true);
 
   /// Processes received sync messages and forwards valid data to the callback.
@@ -351,9 +356,10 @@ class _SyncReceiver extends Tang0Receive {
   /// [data] - The deserialized message data.
   /// [event] - The original BroadcastChannel MessageEvent.
   @override
-  void receive(dynamic data, web.MessageEvent event) {
+  FutureOr<void> receive(dynamic data, web.MessageEvent event) {
     if (data is Map<String, dynamic>) {
-      onDataReceived(data, event);
+      return onDataReceived(data, event);
     }
+    return Future<void>.value();
   }
 }

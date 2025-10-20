@@ -1,19 +1,44 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:js_interop';
+import 'package:flutter/foundation.dart';
 import 'package:tang0/src/top0.dart';
 import 'package:web/web.dart' as web;
+
+/// Error handling strategy for async receive operations.
+enum Tang0ErrorStrategy {
+  /// Skip errors silently without any action.
+  skip,
+
+  /// Print errors to debug console using debugPrint.
+  print,
+
+  /// Call a custom error handler callback.
+  callback,
+}
 
 /// Abstract base class for handling incoming Tang0 messages.
 ///
 /// Implement this class to define how your application should handle
 /// messages received through the Tang0 communication channel.
 ///
+/// The `receive` method can be either synchronous or asynchronous (returns FutureOr<void>).
+/// Async tasks are automatically executed using `.then()` for fire-and-forget behavior.
+///
 /// Example:
 /// ```dart
 /// class MyReceiver extends Tang0Receive {
 ///   @override
-///   void receive(dynamic data, web.MessageEvent event) {
+///   FutureOr<void> receive(dynamic data, web.MessageEvent event) {
 ///     print('Received: $data');
+///   }
+/// }
+///
+/// // With async - executes automatically:
+/// class MyAsyncReceiver extends Tang0Receive {
+///   @override
+///   Future<void> receive(dynamic data, web.MessageEvent event) async {
+///     await someAsyncOperation(data);
 ///   }
 /// }
 /// ```
@@ -24,19 +49,37 @@ abstract class Tang0Receive {
   /// [jsonDecode]. When `false`, data will be passed as raw strings.
   final bool isJson;
 
+  /// Error handling strategy for async operations.
+  final Tang0ErrorStrategy errorStrategy;
+
+  /// Optional error callback for [Tang0ErrorStrategy.callback] strategy.
+  final void Function(Object error, StackTrace stackTrace)? onError;
+
   /// Creates a new Tang0Receive handler.
   ///
   /// [isJson] - Whether to parse incoming data as JSON (defaults to `true`).
-  Tang0Receive({this.isJson = true});
+  /// [errorStrategy] - How to handle errors in async receive operations (defaults to [Tang0ErrorStrategy.print]).
+  /// [onError] - Custom error handler, required when [errorStrategy] is [Tang0ErrorStrategy.callback].
+  Tang0Receive({
+    this.isJson = true,
+    this.errorStrategy = Tang0ErrorStrategy.print,
+    this.onError,
+  }) : assert(
+         errorStrategy != Tang0ErrorStrategy.callback || onError != null,
+         'onError callback must be provided when using Tang0ErrorStrategy.callback',
+       );
 
   /// Called when a message is received and successfully processed.
   ///
   /// This is the main method you should override to handle incoming messages.
+  /// Can be either synchronous or asynchronous.
   ///
   /// [data] - The parsed message data (JSON object if [isJson] is true,
   ///          otherwise raw string).
   /// [event] - The original BroadcastChannel MessageEvent.
-  void receive(dynamic data, web.MessageEvent event);
+  ///
+  /// Returns [FutureOr<void>] to support both sync and async implementations.
+  FutureOr<void> receive(dynamic data, web.MessageEvent event);
 
   /// Preprocesses raw message data before handling.
   ///
@@ -57,12 +100,55 @@ abstract class Tang0Receive {
   /// This method preprocesses the data using [prehandle] and then
   /// calls [receive] with the processed data.
   ///
+  /// If [receive] returns a Future, it is automatically executed using `.then()`
+  /// for fire-and-forget behavior. Synchronous operations execute immediately.
+  ///
+  /// Errors in async operations are handled according to [errorStrategy].
+  ///
   /// [data] - The raw message data as a string.
   /// [event] - The original BroadcastChannel MessageEvent.
   void handle(String data, web.MessageEvent event) {
     final parsed = prehandle(data);
-    // Handle the parsed data
-    receive(parsed, event);
+
+    // Call receive and check if it's async
+    final result = receive(parsed, event);
+
+    if (result is Future<void>) {
+      // Execute async task automatically with fire-and-forget
+      result
+          .then((_) {
+            // Task completed successfully
+          })
+          .catchError((Object error, StackTrace stackTrace) {
+            _handleError(error, stackTrace);
+          });
+    }
+    // Synchronous tasks complete immediately, no action needed
+  }
+
+  /// Internal error handler that applies the configured error strategy.
+  ///
+  /// [error] - The error object that was thrown.
+  /// [stackTrace] - The stack trace of the error.
+  void _handleError(Object error, StackTrace stackTrace) {
+    switch (errorStrategy) {
+      case Tang0ErrorStrategy.skip:
+        // Do nothing - skip silently
+        break;
+
+      case Tang0ErrorStrategy.print:
+        // Print to debug console
+        debugPrint('Tang0Receive error: $error');
+        debugPrint('Stack trace: $stackTrace');
+        break;
+
+      case Tang0ErrorStrategy.callback:
+        // Call custom error handler
+        if (onError != null) {
+          onError!(error, stackTrace);
+        }
+        break;
+    }
   }
 }
 

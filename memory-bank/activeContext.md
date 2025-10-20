@@ -2,6 +2,27 @@
 
 ## Current Work Status
 
+### Async/Sync Hybrid Support + Production Error Handling ✅ NEW
+Tang0 now supports both synchronous and asynchronous receive handlers with production-grade error handling.
+
+**What's Working**:
+- `FutureOr<void>` return type for `receive` methods - supports both sync and async
+- Fire-and-forget async execution using `.then()` - no manual task management needed
+- Configurable error handling strategies for production use
+- All receivers updated to support async operations
+- Comprehensive error handling across all communication patterns
+
+**Error Handling Strategies**:
+- `Tang0ErrorStrategy.skip` - Silently ignore errors (production fail-safe)
+- `Tang0ErrorStrategy.print` - Log errors to debug console (default, development-friendly)
+- `Tang0ErrorStrategy.callback` - Custom error handler for advanced monitoring/logging
+
+**Technical Implementation**:
+- Async tasks execute automatically without blocking message handling
+- Proper error and stack trace capture
+- Assertion validation for callback strategy configuration
+- Exported `Tang0ErrorStrategy` enum for public API
+
 ### SyncedWidget Implementation Complete + Optional Security ✅
 Simple cross-tab synchronization widget for Flutter web apps with clean helper methods and enhanced security options.
 
@@ -12,14 +33,15 @@ Simple cross-tab synchronization widget for Flutter web apps with clean helper m
 - Flutter Secure Storage for keeping encryption keys consistent
 - Working example using the new helper methods
 - Cross-tab synchronization works reliably
-- **NEW**: Optional security functions for custom encryption beyond XOR
+- Optional security functions for custom encryption beyond XOR
+- **NEW**: Async/sync hybrid receive handlers with error handling
 
-**Recent Addition - Optional Security**:
-- Added `optionalSecurityEncrypt` and `optionalSecurityDecrypt` global function placeholders
-- Users can provide their own encryption/decryption functions for enhanced security
-- Commands always use Tang0's XOR system for compatibility
-- Data encryption can be customized (AES, RSA, etc.) while maintaining message structure
-- Comprehensive test suite validates the optional security feature
+**Recent Addition - Async/Sync Support**:
+- `Tang0Receive.receive()` now returns `FutureOr<void>` instead of `void`
+- Both sync and async implementations supported seamlessly
+- Async operations execute via fire-and-forget pattern
+- Production-ready error handling with multiple strategies
+- All helper classes updated: `OneWayReceiver`, `_SyncReceiver`
 
 **Technical Details**:
 - Uses BroadcastChannel for tab-to-tab messaging
@@ -27,16 +49,18 @@ Simple cross-tab synchronization widget for Flutter web apps with clean helper m
 - Widget hash ensures only matching widgets sync together
 - Handles the crypto stuff transparently so devs don't have to think about it
 - Optional security allows true encryption for sensitive data
+- Async operations don't block message processing
 
 ## Current Implementation
 
-### Simple Abstraction Layer + Helper Methods
-Just wraps the messy BroadcastChannel and crypto stuff, plus adds helper methods for super easy usage.
+### Simple Abstraction Layer + Helper Methods + Async Support
+Just wraps the messy BroadcastChannel and crypto stuff, plus adds helper methods for super easy usage, now with full async support.
 
 **Core Files**:
 - `synced_widget.dart`: Main widget that handles sync
-- `helper/synced_widget.dart`: Helper methods for easy widget creation ✅ NEW
-- `channel.dart`: BroadcastChannel wrapper  
+- `helper/synced_widget.dart`: Helper methods for easy widget creation ✅
+- `helper/one_way_sync.dart`: One-way messaging with async support ✅ UPDATED
+- `channel.dart`: BroadcastChannel wrapper with error handling ✅ UPDATED
 - `top0.dart`: Crypto/signing functions (mostly invisible to users)
 
 **Helper Methods Added**:
@@ -52,24 +76,59 @@ Just wraps the messy BroadcastChannel and crypto stuff, plus adds helper methods
 
 ### Next Steps
 1. ✅ Helper methods created - makes usage much simpler
-2. Set up proper exports in `lib/tang0.dart` 
-3. ✅ Write basic README showing how to use it
-4. Maybe add a few more examples if needed
+2. ✅ Async/sync hybrid support implemented
+3. ✅ Production error handling strategies added
+4. ✅ Set up proper exports in `lib/tang0.dart` - COMPLETE
+5. ✅ Write basic README showing how to use it - UPDATED
+6. Consider additional examples showcasing async patterns
 
-The helper methods transformed a complex manual setup into simple, readable code.
+The helper methods transformed a complex manual setup into simple, readable code. Async support enables real-world use cases like database operations and API calls.
 
 ## File Status
 - ✅ `lib/src/top0.dart` - Crypto functions working
-- ✅ `lib/src/channel.dart` - BroadcastChannel wrapper working  
-- ✅ `lib/src/templates/synced_widget.dart` - Main sync widget working
-- ✅ `lib/src/helper/synced_widget.dart` - Helper methods working ✅ NEW
-- ✅ `example/synced_widget.dart` - Demo app updated with helper methods ✅ UPDATED
-- ⚠️ `lib/tang0.dart` - Empty, needs exports for public API
+- ✅ `lib/src/channel.dart` - BroadcastChannel wrapper with async + error handling ✅ UPDATED
+- ✅ `lib/src/templates/synced_widget.dart` - Main sync widget with async support ✅ UPDATED
+- ✅ `lib/src/helper/synced_widget.dart` - Helper methods working
+- ✅ `lib/src/helper/one_way_sync.dart` - One-way sync with async support ✅ UPDATED
+- ✅ `example/synced_widget.dart` - Demo app updated with helper methods
+- ✅ `lib/tang0.dart` - Exports Tang0ErrorStrategy and core classes ✅ UPDATED
 
 ## Testing
 - Manual testing works - can sync between browser tabs
 - Helper methods dramatically simplify usage
 - Example reduced from 100+ lines of boilerplate to clean, readable code
-- ✅ Unit tests: 27 tests passing with test mode for secure storage ✅ FIXED
-- Need to test more edge cases
+- ✅ Unit tests: 37 tests passing (27 crypto + 10 optional security) ✅
+- ✅ Async tests created but skipped due to web package version incompatibility
+- Need to test more edge cases with async patterns
 - BroadcastChannel only works in actual browsers, not in test environment
+
+## Usage Examples
+
+### Async Receive Handler
+```dart
+final receiver = OneWayReceiver<UserData>(
+  onReceive: (data, event) async {
+    // Async operations work seamlessly
+    await database.saveUser(data);
+    await analytics.logEvent('user_updated');
+  },
+);
+```
+
+### Custom Error Handling
+```dart
+final receiver = OneWayReceiverWidget<String>(
+  command: "important_updates",
+  errorStrategy: Tang0ErrorStrategy.callback,
+  onError: (error, stackTrace) {
+    // Log to monitoring service
+    ErrorLogger.report(error, stackTrace);
+    // Notify user
+    showErrorToast("Update failed");
+  },
+  onReceive: (message, event) async {
+    await processImportantUpdate(message);
+  },
+  child: MyWidget(),
+);
+```

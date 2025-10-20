@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:tang0/src/channel.dart';
 import 'package:web/web.dart' as web;
@@ -88,34 +89,42 @@ class OneWaySender<T> {
 ///
 /// Receives and processes messages from [OneWaySender] instances with
 /// matching command strings and channels.
+///
+/// The [onReceive] callback can be either synchronous or asynchronous.
+/// Async operations are queued and can be executed using [runPendingTasks].
 class OneWayReceiver<T> extends Tang0Receive {
   /// Callback function called when a message is received.
-  final void Function(T data, web.MessageEvent event) onReceive;
+  /// Can be sync or async.
+  final FutureOr<void> Function(T data, web.MessageEvent event) onReceive;
 
   /// Function to deserialize JSON data back to the expected type.
   final T Function(Map<String, dynamic>)? _deserializer;
 
   /// Creates a new one-way message receiver.
   ///
-  /// [onReceive] - Callback function to handle received messages.
+  /// [onReceive] - Callback function to handle received messages (sync or async).
   /// [deserializer] - Optional custom deserializer for complex types.
   ///                  If not provided, assumes T has a fromJson constructor.
+  /// [errorStrategy] - How to handle errors in async receive operations (defaults to [Tang0ErrorStrategy.print]).
+  /// [onError] - Custom error handler, required when [errorStrategy] is [Tang0ErrorStrategy.callback].
   OneWayReceiver({
     required this.onReceive,
     T Function(Map<String, dynamic>)? deserializer,
+    super.errorStrategy,
+    super.onError,
   }) : _deserializer = deserializer,
        super(isJson: true);
 
   @override
-  void receive(dynamic data, web.MessageEvent event) {
+  FutureOr<void> receive(dynamic data, web.MessageEvent event) {
     if (data is Map<String, dynamic>) {
-      T payload;
+      T? payload;
 
       if (_deserializer != null) {
         try {
           payload = _deserializer(data);
         } catch (e) {
-          return;
+          return Future<void>.value();
         }
       } else if (T == Map<String, dynamic>) {
         payload = data as T;
@@ -128,11 +137,14 @@ class OneWayReceiver<T> extends Tang0Receive {
           'Error: Cannot deserialize $T without a deserializer function. '
           'Provide one in OneWayReceiver constructor or use OneWaySync.receiver() factory.',
         );
-        return;
+        return Future<void>.value();
       }
 
-      onReceive(payload, event);
+      if (payload != null) {
+        return onReceive(payload, event);
+      }
     }
+    return Future<void>.value();
   }
 }
 
@@ -141,6 +153,8 @@ class OneWayReceiver<T> extends Tang0Receive {
 /// Wraps a child widget and automatically handles message reception
 /// from [OneWaySender] instances with matching commands.
 ///
+/// The [onReceive] callback can be either synchronous or asynchronous.
+///
 /// Example:
 /// ```dart
 /// OneWayReceiver<UserEvent>(
@@ -148,6 +162,15 @@ class OneWayReceiver<T> extends Tang0Receive {
 ///   channelName: "auth_events",
 ///   onReceive: (event, messageEvent) {
 ///     print("User logged in: ${event.name}");
+///   },
+///   child: MyWidget(),
+/// )
+///
+/// // Async example:
+/// OneWayReceiver<UserEvent>(
+///   command: "user_login",
+///   onReceive: (event, messageEvent) async {
+///     await handleUserLogin(event);
 ///   },
 ///   child: MyWidget(),
 /// )
@@ -162,11 +185,17 @@ class OneWayReceiverWidget<T> extends StatefulWidget {
   /// Optional channel name (must match sender's channel).
   final String? channelName;
 
-  /// Callback function for received messages.
-  final void Function(T data, web.MessageEvent event) onReceive;
+  /// Callback function for received messages (can be sync or async).
+  final FutureOr<void> Function(T data, web.MessageEvent event) onReceive;
 
   /// Optional custom deserializer.
   final T Function(Map<String, dynamic>)? deserializer;
+
+  /// Error handling strategy for async operations.
+  final Tang0ErrorStrategy? errorStrategy;
+
+  /// Optional error callback.
+  final void Function(Object error, StackTrace stackTrace)? onError;
 
   /// Creates a new one-way receiver widget.
   const OneWayReceiverWidget({
@@ -176,6 +205,8 @@ class OneWayReceiverWidget<T> extends StatefulWidget {
     required this.onReceive,
     this.channelName,
     this.deserializer,
+    this.errorStrategy,
+    this.onError,
   });
 
   @override
@@ -205,6 +236,8 @@ class _OneWayReceiverWidgetState<T> extends State<OneWayReceiverWidget<T>> {
       OneWayReceiver<T>(
         onReceive: widget.onReceive,
         deserializer: widget.deserializer,
+        errorStrategy: widget.errorStrategy ?? Tang0ErrorStrategy.print,
+        onError: widget.onError,
       ),
     );
   }

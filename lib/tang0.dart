@@ -60,8 +60,8 @@
 /// ```
 library;
 
-// Core Tang0 channel functionality
-export 'src/channel.dart';
+// Core Tang0 channel functionality and error handling
+export 'src/channel.dart' show Tang0Channel, Tang0Receive, Tang0ErrorStrategy;
 
 // Security and token initialization
 export 'src/top0.dart' show initializeTang0Tokens;
