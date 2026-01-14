@@ -1,52 +1,44 @@
 # Tang0 Project Brief
 
+Tang0 is a Flutter Web package that provides small, composable primitives for cross-tab communication using the browser `BroadcastChannel` API.
+
+Legacy (pre-revamp) docs are archived in `memory-bank/details/legacy_*`.
+
 ## Core Purpose
-Tang0 is a simple Flutter web package that wraps the BroadcastChannel API to make cross-tab state synchronization easier for developers. It handles the crypto and messaging complexity automatically.
+- Provide a clean Dart API over `BroadcastChannel`
+- Support two common cross-tab needs:
+	- state sync (a “shared variable”)
+	- event sync (a “shared stream”)
+- Stay lightweight: minimal deps and minimal opinionated UI
 
 ## Key Requirements
-1. **Simple Widget**: Easy-to-use SyncedWidget that handles sync automatically
-2. **Secure Messages**: All messages signed/verified transparently  
-3. **Flutter Native**: Uses familiar Flutter patterns and widgets
-4. **Just Works**: No configuration needed, sensible defaults
-5. **Cross-tab Sync**: Variables stay in sync between browser tabs
+- **Web-first**: works in modern browsers supporting `BroadcastChannel`
+- **Extensible payloads**: override outer envelope parsing and mutate inner JSON maps
+- **Backpressure**: avoid flooding via a central dispatch pool (rate limit + queue + optional coalescing)
+- **Lifecycle-safe**: listeners return disposers for cleanup
+- **Type-friendly**: built-in codec mapping for common Dart types
 
-## Library Structure
+## Non-Goals
+- Cryptographic signing/encryption (removed from the new scope)
+- Multi-platform (mobile/desktop) support
+- Conflict resolution for concurrent edits (last-write-wins semantics by default)
+- Persistence (localStorage is used only for per-tab identity)
 
-### `lib/tang0.dart` - Main Exports
-- Public API for developers (needs to be set up)
+## Public Surface (current)
+- `Tang0Channel`: channel wrapper + listener registry + payload/JSON hooks
+- `T0SyncVar<T>`: `ValueNotifier<T>` that broadcasts updates across tabs
+- `T0ReactiveStream<T>`: `ChangeNotifier` + broadcast stream for event-style sync
+- `T0DispatchPool`: shared throttling/coalescing for outbound messages
+- `SyncEnum`: sync modes (`twoWay`, `uploadOnly`, `downloadOnly`, `uploadWithDelay`)
+- `SyncVarCodec<T>` / `SyncVarCodecs`: type ↔ codec registry
 
-### `lib/src/top0.dart` - Security Functions
-- Message signing with HMAC-SHA256
-- Automatic token generation and storage
-- All handled transparently by widgets
-
-### `lib/src/channel.dart` - BroadcastChannel Wrapper
-- Tang0Channel class wraps native BroadcastChannel
-- Handles JSON serialization and message routing
-- Automatic cleanup on widget disposal
-
-### `lib/src/templates/synced_widget.dart` - Main Widget
-- SyncedWidget for cross-tab variable synchronization
-- SyncedVar<T> for reactive variables
-- Integrates with Flutter StatefulWidget pattern
-
-## Use Cases
-
-### Current: Basic State Sync
-- Shopping cart updates across tabs
-- Form data persistence
-- Settings/preferences sync
-- Counter/status displays
-
-### Possible Future
-If people find it useful:
-- Login/logout state sync
-- Simple notifications across tabs
-- Basic data streaming
+## Internal Presets (not exported)
+Presets live under `lib/src/templates/` and are intentionally not part of the public API:
+- `T0TTimer`: a lightweight cross-tab timer “presence” broadcast (SYNC/PAUSE/RESUME/END)
+- `T0TabDeduper`: a cross-tab heartbeat + dedup helper (keep oldest N tabs)
 
 ## Success Criteria
-- Developers can add cross-tab sync in a few lines of code
-- No need to understand BroadcastChannel API directly
-- Security handled automatically
-- Works reliably in common browsers
-- Clear example showing how to use it
+- Dev can sync a value/event across tabs in a few lines
+- No JS interop footguns for consumers
+- Rate-limited by default under high-frequency updates
+- Clear README examples and stable API names
