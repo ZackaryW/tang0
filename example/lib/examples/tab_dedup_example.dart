@@ -1,7 +1,7 @@
 // ignore_for_file: implementation_imports
 
 import 'package:flutter/material.dart';
-import 'package:tang0/src/templates/tab_dedup.dart';
+import 'package:tang0/templates/tab_dedup.dart';
 
 import 'section.dart';
 
