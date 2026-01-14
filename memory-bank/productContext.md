@@ -1,45 +1,45 @@
 # Product Context
 
-## Problem Statement
-Cross-tab communication in Flutter web apps is messy and tedious. Developers end up:
-
-- Writing repetitive BroadcastChannel boilerplate
-- Manually handling message signing/verification
-- Debugging sync issues between tabs
-- Reimplementing the same patterns over and over
+## Problem
+Cross-tab communication in Flutter web is useful but annoying to implement well:
+- `BroadcastChannel` is low-level (serialization, routing, cleanup)
+- High-frequency state changes can flood other tabs
+- You often want both “shared state” and “shared events”
+- Teams want hooks to shape payloads without forking the library
 
 ## Why Tang0 Exists
-Tang0 wraps the messy parts so developers can focus on their actual features:
-
-1. **Simple Widget**: Just wrap your UI in SyncedWidget and variables sync automatically
-2. **Security Handled**: Messages are signed/verified transparently
-3. **Flutter Integration**: Uses familiar patterns like StatefulWidget and builder functions
-4. **Working Example**: Clear demo showing how to use it
-
-## Use Cases
-
-### Current: SyncedWidget
-For when you want variables to stay in sync between browser tabs:
-- Shopping cart updates across tabs
-- Form data persistence when user opens new tab
-- Settings changes reflected everywhere
-- Counter/status displays staying consistent
-
-### Possible Future Ideas
-If people find it useful, could add templates for:
-- Login state sync (logout one tab, logout all)
-- Notifications/alerts across tabs
-- Simple data streaming
+Tang0 provides a thin, extensible layer:
+- `Tang0Channel` wraps `BroadcastChannel` and standardizes payload handling
+- `T0SyncVar<T>` provides state sync as a `ValueNotifier<T>`
+- `T0ReactiveStream<T>` provides event sync as a notifier + stream
+- `T0DispatchPool` provides backpressure so updates don’t spam
 
 ## Target Users
-Flutter web developers who need basic cross-tab state sync but don't want to mess with:
-- BroadcastChannel API directly
-- Message signing/verification
-- JSON serialization edge cases
-- Widget lifecycle management for channels
+- Flutter web developers who want cross-tab sync without re-writing plumbing
+- Apps that need rate-limited updates (typing, drag, sliders, progress)
 
-## Goals
-- **Easy to use**: Drop in widget, variables sync automatically
-- **Secure by default**: All messages signed, can't be tampered with
-- **Flutter-native**: Feels like normal Flutter development
-- **Just works**: Handle the common cases well, no configuration needed
+## Core Workflows
+
+### Workflow: Shared state
+1. Create a `T0SyncVar<T>` with a `channelId` and `key`
+2. Update `.value` locally
+3. Tang0 broadcasts JSON updates; other tabs apply them
+4. Self-echo is suppressed using a per-tab sender id
+
+### Workflow: Shared events
+1. Create a `T0ReactiveStream<T>`
+2. Call `add(value)` to emit locally and broadcast
+3. Other tabs receive and emit into their local stream
+
+### Workflow: Custom payload shaping
+- Override outer envelope via `Tang0Channel.payloadEncoder`/`payloadDecoder`
+- Mutate inner JSON maps via `Tang0Channel.jsonOutbound`/`jsonInbound`
+
+### Workflow: Presets (internal)
+- Timer preset broadcasts a minimal state snapshot every 5 seconds and can pause/resume/end across tabs
+- Tab-dedup preset broadcasts tab presence (uuid, createdAt, lastSeen, meta) and requests closure when over a threshold
+
+## UX Goals
+- Simple defaults; advanced hooks optional
+- Predictable behavior under load (pooling/coalescing)
+- Easy cleanup (disposer functions)

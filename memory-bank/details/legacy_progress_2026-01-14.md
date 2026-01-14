@@ -1,3 +1,10 @@
+# Legacy: progress.md (2026-01-14)
+
+This file preserves the previous contents of `memory-bank/progress.md` prior to the documentation revamp.
+
+---
+
+```
 # Progress Status
 
 ## What's Working
@@ -100,74 +107,4 @@ Tang0 is a simple Flutter web package that wraps the BroadcastChannel API to mak
 - Limited to JSON-serializable data types
 - Can't unit test the cross-tab parts
 - Async tests skipped due to web package SDK version issue
-
-## Usage (Now with Async Support!)
-
-### Synchronous Handler
-```dart
-final receiver = OneWayReceiver<String>(
-  onReceive: (message, event) {
-    print('Received: $message');
-  },
-);
 ```
-
-### Asynchronous Handler
-```dart
-final receiver = OneWayReceiver<UserData>(
-  onReceive: (data, event) async {
-    await database.saveUser(data);
-    await analytics.logEvent('user_synced');
-  },
-  errorStrategy: Tang0ErrorStrategy.callback,
-  onError: (error, stackTrace) {
-    logger.error('Async operation failed', error, stackTrace);
-  },
-);
-```
-
-### Simplified Widget Creation
-```dart
-SyncedWidgetBuilder()
-  .addCounter('counter', 0)
-  .addText('message', 'Hello')
-  .addToggle('enabled', true)
-  .build((context, vars) {
-    final counter = vars[0] as SyncedVar<int>;
-    return Column(children: [
-      counter.controls(title: 'Score'),  // Built-in UI!
-    ]);
-  });
-```
-
-Helper methods make Tang0 much more developer-friendly and reduce boilerplate significantly. Async support enables real-world integrations with databases, APIs, and external services.
-
-## Recent Enhancement - Optional Security ✅
-
-### Enhanced Security Options
-**Custom encryption for sensitive data**
-- `optionalSecurityEncrypt` and `optionalSecurityDecrypt` global function placeholders
-- Users can provide their own encryption functions (AES, RSA, etc.)
-- Commands still use Tang0's XOR for compatibility
-- Data encryption is fully customizable
-- Maintains message structure and HMAC verification
-- Comprehensive test coverage with multiple encryption examples
-
-## Project Status
-
-### Complete with Async Support ✅
-Tang0 is production-ready with both one-way communication and synced widget patterns working reliably, plus optional security for enterprise use cases and full async/sync hybrid support.
-
-**Potential Future Enhancements**:
-- Additional data types for SyncedVar (lists, maps, custom objects)
-- More built-in UI components
-- Performance optimizations for large datasets
-- Additional examples showcasing async patterns
-- Built-in AES encryption helper
-- Retry mechanisms for failed async operations
-
-**Documentation**:
-- README covers all major features including async support ✅ UPDATED
-- Examples demonstrate both communication patterns
-- API documentation is comprehensive  
-- Test suite includes optional security and async validation

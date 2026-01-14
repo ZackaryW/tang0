@@ -1,291 +1,178 @@
-import 'dart:async';
 import 'dart:convert';
 import 'dart:js_interop';
-import 'package:flutter/foundation.dart';
-import 'package:tang0/src/top0.dart';
+import 'package:uuid/uuid.dart';
 import 'package:web/web.dart' as web;
 
-/// Error handling strategy for async receive operations.
-enum Tang0ErrorStrategy {
-  /// Skip errors silently without any action.
-  skip,
+typedef Tang0PayloadEncoder = String Function(String senderId, String message);
+typedef Tang0PayloadDecoder =
+    ({String senderId, String message})? Function(String payload);
 
-  /// Print errors to debug console using debugPrint.
-  print,
+typedef Tang0JsonMutator = Map<String, dynamic> Function(Map<String, dynamic>);
 
-  /// Call a custom error handler callback.
-  callback,
+class _ListenerEntry {
+  final void Function(String) callback;
+  final Tang0PayloadDecoder? payloadDecoder;
+  final void Function(String rawPayload)? onPayload;
+
+  const _ListenerEntry({
+    required this.callback,
+    this.payloadDecoder,
+    this.onPayload,
+  });
 }
 
-/// Abstract base class for handling incoming Tang0 messages.
-///
-/// Implement this class to define how your application should handle
-/// messages received through the Tang0 communication channel.
-///
-/// The `receive` method can be either synchronous or asynchronous (returns FutureOr<void>).
-/// Async tasks are automatically executed using `.then()` for fire-and-forget behavior.
-///
-/// Example:
-/// ```dart
-/// class MyReceiver extends Tang0Receive {
-///   @override
-///   FutureOr<void> receive(dynamic data, web.MessageEvent event) {
-///     print('Received: $data');
-///   }
-/// }
-///
-/// // With async - executes automatically:
-/// class MyAsyncReceiver extends Tang0Receive {
-///   @override
-///   Future<void> receive(dynamic data, web.MessageEvent event) async {
-///     await someAsyncOperation(data);
-///   }
-/// }
-/// ```
-abstract class Tang0Receive {
-  /// Whether to automatically parse incoming data as JSON.
-  ///
-  /// When `true`, incoming string data will be parsed as JSON using
-  /// [jsonDecode]. When `false`, data will be passed as raw strings.
-  final bool isJson;
-
-  /// Error handling strategy for async operations.
-  final Tang0ErrorStrategy errorStrategy;
-
-  /// Optional error callback for [Tang0ErrorStrategy.callback] strategy.
-  final void Function(Object error, StackTrace stackTrace)? onError;
-
-  /// Creates a new Tang0Receive handler.
-  ///
-  /// [isJson] - Whether to parse incoming data as JSON (defaults to `true`).
-  /// [errorStrategy] - How to handle errors in async receive operations (defaults to [Tang0ErrorStrategy.print]).
-  /// [onError] - Custom error handler, required when [errorStrategy] is [Tang0ErrorStrategy.callback].
-  Tang0Receive({
-    this.isJson = true,
-    this.errorStrategy = Tang0ErrorStrategy.print,
-    this.onError,
-  }) : assert(
-         errorStrategy != Tang0ErrorStrategy.callback || onError != null,
-         'onError callback must be provided when using Tang0ErrorStrategy.callback',
-       );
-
-  /// Called when a message is received and successfully processed.
-  ///
-  /// This is the main method you should override to handle incoming messages.
-  /// Can be either synchronous or asynchronous.
-  ///
-  /// [data] - The parsed message data (JSON object if [isJson] is true,
-  ///          otherwise raw string).
-  /// [event] - The original BroadcastChannel MessageEvent.
-  ///
-  /// Returns [FutureOr<void>] to support both sync and async implementations.
-  FutureOr<void> receive(dynamic data, web.MessageEvent event);
-
-  /// Preprocesses raw message data before handling.
-  ///
-  /// If [isJson] is true, attempts to parse the data as JSON.
-  /// Otherwise returns the raw string data.
-  ///
-  /// [data] - The raw message data as a string.
-  /// Returns the processed data (parsed JSON or raw string).
-  dynamic prehandle(String data) {
-    if (isJson) {
-      return jsonDecode(data);
-    }
-    return data;
-  }
-
-  /// Internal method that processes incoming messages.
-  ///
-  /// This method preprocesses the data using [prehandle] and then
-  /// calls [receive] with the processed data.
-  ///
-  /// If [receive] returns a Future, it is automatically executed using `.then()`
-  /// for fire-and-forget behavior. Synchronous operations execute immediately.
-  ///
-  /// Errors in async operations are handled according to [errorStrategy].
-  ///
-  /// [data] - The raw message data as a string.
-  /// [event] - The original BroadcastChannel MessageEvent.
-  void handle(String data, web.MessageEvent event) {
-    final parsed = prehandle(data);
-
-    // Call receive and check if it's async
-    final result = receive(parsed, event);
-
-    if (result is Future<void>) {
-      // Execute async task automatically with fire-and-forget
-      result
-          .then((_) {
-            // Task completed successfully
-          })
-          .catchError((Object error, StackTrace stackTrace) {
-            _handleError(error, stackTrace);
-          });
-    }
-    // Synchronous tasks complete immediately, no action needed
-  }
-
-  /// Internal error handler that applies the configured error strategy.
-  ///
-  /// [error] - The error object that was thrown.
-  /// [stackTrace] - The stack trace of the error.
-  void _handleError(Object error, StackTrace stackTrace) {
-    switch (errorStrategy) {
-      case Tang0ErrorStrategy.skip:
-        // Do nothing - skip silently
-        break;
-
-      case Tang0ErrorStrategy.print:
-        // Print to debug console
-        debugPrint('Tang0Receive error: $error');
-        debugPrint('Stack trace: $stackTrace');
-        break;
-
-      case Tang0ErrorStrategy.callback:
-        // Call custom error handler
-        if (onError != null) {
-          onError!(error, stackTrace);
-        }
-        break;
-    }
-  }
-}
-
-/// A secure communication channel for cross-tab messaging using BroadcastChannel API.
-///
-/// Tang0Channel provides a secure wrapper around the browser's BroadcastChannel API,
-/// automatically handling message signing, verification, and routing to appropriate
-/// receivers based on command strings.
-///
-/// Features:
-/// - Automatic message signing and verification using HMAC-SHA256
-/// - Command-based message routing
-/// - JSON serialization support
-/// - Cross-tab communication within the same origin
-///
-/// Example:
-/// ```dart
-/// final channel = Tang0Channel(name: "my_app");
-///
-/// // Register a receiver for "update" commands
-/// channel.registerReceiver("update", MyUpdateReceiver());
-///
-/// // Send a message to all tabs
-/// channel.send("update", {"count": 42});
-/// ```
 class Tang0Channel {
-  /// The name of this communication channel.
+  static final Map<String, Tang0Channel> _channels = {};
+  static final Map<String, List<_ListenerEntry>> _listeners = {};
+  static final Set<String> _wiredListenerIds = <String>{};
+  static String? _globalIdentifier;
+
+  /// Default payload encoder/decoder.
   ///
-  /// Multiple Tang0Channel instances with the same name will communicate
-  /// with each other across browser tabs. The actual BroadcastChannel name
-  /// will be prefixed with "tang0_".
-  final String name;
+  /// Payload format: `$senderId::$message`
+  static Tang0PayloadEncoder payloadEncoder = (senderId, message) =>
+      '$senderId::$message';
+  static Tang0PayloadDecoder payloadDecoder = (payload) {
+    final splitIndex = payload.indexOf('::');
+    if (splitIndex == -1) return null;
+    return (
+      senderId: payload.substring(0, splitIndex),
+      message: payload.substring(splitIndex + 2),
+    );
+  };
 
-  /// Map of command strings to their corresponding message receivers.
-  final Map<String, Tang0Receive> _receivers = {};
+  /// Optional “inner rim” JSON processing.
+  ///
+  /// These run *inside* the payload (the JSON string content) and let you
+  /// inject/override fields or reshape the map before encoding/sending or after
+  /// decoding/receiving.
+  ///
+  /// Notes:
+  /// - Only applies to JSON map payloads.
+  /// - This is separate from [payloadEncoder]/[payloadDecoder] which operate on
+  ///   the outer `senderId::message` envelope.
+  static Tang0JsonMutator jsonOutbound = (map) => map;
+  static Tang0JsonMutator jsonInbound = (map) => map;
 
-  /// The underlying BroadcastChannel instance.
+  static Map<String, dynamic>? tryDecodeJsonMessage(String message) {
+    try {
+      final decoded = jsonDecode(message);
+      if (decoded is! Map) return null;
+      return jsonInbound(Map<String, dynamic>.from(decoded));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  final String id;
   late final web.BroadcastChannel _channel;
 
-  /// Creates a new Tang0Channel with the specified name.
-  ///
-  /// [name] - The channel name (defaults to "untitled"). This will be
-  ///          prefixed with "tang0_" for the actual BroadcastChannel.
-  ///
-  /// The constructor automatically sets up the BroadcastChannel and
-  /// begins listening for incoming messages.
-  Tang0Channel({this.name = "untitled"}) {
-    _channel = web.BroadcastChannel("tang0_$name");
-    _channel.addEventListener("message", _handleMessage.toJS);
+  Tang0Channel._internal(this.id) {
+    _channel = web.BroadcastChannel(id);
   }
 
-  /// Registers a message receiver for a specific command.
-  ///
-  /// When a message with the specified command is received, it will be
-  /// routed to the provided receiver's [Tang0Receive.handle] method.
-  ///
-  /// [command] - The command string to listen for (max 32 characters).
-  /// [receiver] - The Tang0Receive instance to handle matching messages.
-  ///
-  /// Example:
-  /// ```dart
-  /// channel.registerReceiver("chat", MyChatReceiver());
-  /// channel.registerReceiver("sync", MySyncReceiver());
-  /// ```
-  void registerReceiver(String command, Tang0Receive receiver) {
-    _receivers[command] = receiver;
+  factory Tang0Channel(String id) {
+    _localStorageCheck();
+
+    return _channels.putIfAbsent(id, () => Tang0Channel._internal(id));
   }
 
-  /// Internal method that handles incoming BroadcastChannel messages.
-  ///
-  /// This method:
-  /// 1. Safely converts JavaScript message data to Dart strings
-  /// 2. Matches the message command against registered receivers
-  /// 3. Verifies message signature and authenticity
-  /// 4. Routes verified messages to the appropriate receiver
-  ///
-  /// [event] - The BroadcastChannel MessageEvent containing the message data.
-  void _handleMessage(web.MessageEvent event) {
-    // Use proper JS interop conversion with type safety
-    final jsData = event.data;
-    if (jsData == null) return;
+  void send(String message) {
+    final senderId = _globalIdentifier ?? '';
+    final payload = payloadEncoder(senderId, message);
 
-    // Convert JSAny? to String safely with fallback
-    String data;
-    try {
-      if (jsData.typeofEquals('string')) {
-        data = (jsData as JSString).toDart;
-      } else {
-        // Handle case where data might be sent as different type
-        data = jsData.toString();
-      }
-    } catch (e) {
-      // If conversion fails completely, ignore the message
-      return;
-    }
-
-    final matched = matchCommand(data, _receivers.keys.toList());
-    if (matched == null) {
-      return;
-    }
-
-    // Extract data and forward to appropriate receiver
-    final extractedData = verifyData(data);
-    if (extractedData != null) {
-      final receiver = _receivers[matched];
-      if (receiver != null) {
-        receiver.handle(extractedData, event);
-      }
-    }
-  }
-
-  /// Sends a message to all tabs listening on this channel.
-  ///
-  /// The message is automatically signed using HMAC-SHA256 for security
-  /// and can be optionally JSON-encoded before transmission.
-  ///
-  /// [command] - The command string (max 32 characters) that identifies
-  ///             the message type. Receiving tabs must have a registered
-  ///             receiver for this command.
-  /// [data] - The message payload to send.
-  /// [isJson] - Whether to JSON-encode the data before sending (defaults to true).
-  ///
-  /// Example:
-  /// ```dart
-  /// // Send JSON data
-  /// channel.send("update", {"userId": 123, "status": "online"});
-  ///
-  /// // Send raw string data
-  /// channel.send("message", "Hello World", isJson: false);
-  /// ```
-  ///
-  /// Throws:
-  /// - [ArgumentError] if command exceeds 32 characters
-  void send(String command, dynamic data, {bool isJson = true}) {
-    // if is json, convert to string
-    final message = isJson ? jsonEncode(data) : data.toString();
-    final payload = sign(command, message);
     _channel.postMessage(payload.toJS);
+  }
+
+  void sendJson(Map<String, dynamic> message) {
+    final outbound = jsonOutbound(Map<String, dynamic>.from(message));
+    send(jsonEncode(outbound));
+  }
+
+  static void Function() addGListener(
+    String id,
+    void Function(String) listener, {
+    Tang0PayloadDecoder? payloadDecoder,
+    void Function(String rawPayload)? onPayload,
+  }) {
+    final list = _listeners.putIfAbsent(id, () => <_ListenerEntry>[]);
+    final entry = _ListenerEntry(
+      callback: listener,
+      payloadDecoder: payloadDecoder,
+      onPayload: onPayload,
+    );
+    list.add(entry);
+
+    void dispose() {
+      final existing = _listeners[id];
+      if (existing == null) return;
+
+      existing.removeWhere((e) => identical(e, entry));
+      if (existing.isNotEmpty) return;
+
+      _listeners.remove(id);
+      _wiredListenerIds.remove(id);
+    }
+
+    if (_wiredListenerIds.contains(id)) return dispose;
+    _wiredListenerIds.add(id);
+
+    final channel = Tang0Channel(id);
+    channel._channel.addEventListener(
+      'message',
+      ((web.Event event) {
+        final messageEvent = event as web.MessageEvent;
+        final jsData = messageEvent.data;
+        if (jsData == null) return;
+
+        String dartData;
+        try {
+          if (jsData.typeofEquals('string')) {
+            dartData = (jsData as JSString).toDart;
+          } else {
+            dartData = jsData.toString();
+          }
+        } catch (_) {
+          return;
+        }
+
+        final registeredListeners = _listeners[id];
+        if (registeredListeners == null || registeredListeners.isEmpty) return;
+
+        // Copy the list in case a callback mutates registration.
+        for (final entry in List<_ListenerEntry>.from(registeredListeners)) {
+          entry.onPayload?.call(dartData);
+
+          final decoder = entry.payloadDecoder ?? Tang0Channel.payloadDecoder;
+          final decoded = decoder(dartData);
+          if (decoded == null) continue;
+          if (decoded.senderId == _globalIdentifier) continue;
+
+          entry.callback(decoded.message);
+        }
+      }).toJS,
+    );
+
+    return dispose;
+  }
+
+  static void removeGListener(String id) {
+    _listeners.remove(id);
+    _wiredListenerIds.remove(id);
+  }
+
+  static void _localStorageCheck() {
+    if (_globalIdentifier != null) return;
+
+    // Sender id must be unique per tab/window so self-echo suppression
+    // doesn't suppress other tabs.
+    final storage = web.window.sessionStorage;
+    const key = 'tang0_sender_1';
+
+    var raw = storage.getItem(key);
+    raw ??= base64UrlEncode(Uuid().v4().codeUnits);
+    storage.setItem(key, raw);
+
+    _globalIdentifier = String.fromCharCodes(base64Url.decode(raw));
   }
 }
