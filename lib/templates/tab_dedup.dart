@@ -4,8 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import 'package:web/web.dart' as web;
 
-import '../channel.dart';
-import '../dispatchPool.dart';
+import '../src/channel.dart';
+import '../src/dispatchPool.dart';
 
 class T0TabPresence {
   final String id;

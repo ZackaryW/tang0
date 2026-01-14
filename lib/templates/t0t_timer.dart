@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import '../channel.dart';
-import '../dispatchPool.dart';
+import '../src/channel.dart';
+import '../src/dispatchPool.dart';
 
 /// Tang0 Timer preset (T0T).
 ///

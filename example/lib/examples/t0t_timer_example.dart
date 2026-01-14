@@ -3,7 +3,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:tang0/src/templates/t0t_timer.dart';
+import 'package:tang0/templates/t0t_timer.dart';
 
 import 'section.dart';
 
