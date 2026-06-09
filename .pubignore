@@ -1,2 +1,3 @@
 # Exclude memory bank documentation
 memory-bank/
+build/
