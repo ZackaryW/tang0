@@ -1,3 +1,19 @@
+## 0.10.0
+
+* **Breaking**: Ground-up rebuild into layered cross-tab primitives — `Tang0Channel`, `T0SyncVar` (old), `SyncEnum`, and the templates are removed
+* Added `T0Platform` — injectable browser surface (clock, storage, channel, Web Locks) so the protocol is testable without a browser
+* Added `T0Presence` — live tab awareness with per-tab metadata, heartbeat, and stale pruning
+* Added `T0Leader` — true single-leader election over Web Locks; fails loud when unavailable instead of degrading
+* Added `T0SoftLock` — explicitly advisory localStorage lease for best-effort coordination (never a true leader)
+* Added `T0Rpc` — request/response over a bus for cross-tab queries
+* Added `T0Hydrator` — new-tab state catch-up from a peer snapshot or persisted storage
+* Added `T0LwwRegister` — last-write-wins conflict resolution (version, timestamp, origin tiebreak)
+* Rebuilt `T0SyncVar<T>` on LWW with persistence and new-tab catch-up
+* Rebuilt `T0TabDeduper` on presence; added `T0SharedDraft` for shared editing sessions
+* Kept `T0Bus`, `T0Store`, `T0DispatchPool`, and the `T0Codec` registry as the core layer
+* Fixed Zone-capture handling in channel listeners; bundled the example with web scaffolding
+* Tests run under `flutter test --platform chrome` against an in-memory multi-tab fake
+
 ## 0.9.0
 
 * **Breaking**: Complete API redesign — crypto/SyncedWidget replaced with lightweight cross-tab sync toolkit
