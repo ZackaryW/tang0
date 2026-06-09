@@ -1,6 +1,6 @@
 name: tang0
-description: "A Flutter web package for effortless cross-tab communication using BroadcastChannel API"
-version: 0.9.0
+description: "Cross-tab sync & dedup primitives for Flutter web — presence, true leader election, CRDT conflict resolution, and state catch-up over BroadcastChannel & Web Locks."
+version: 0.10.0
 homepage: https://github.com/ZackaryW/tang0
 
 environment:
