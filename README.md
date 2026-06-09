@@ -1,154 +1,91 @@
-# Tang0
+# tang0
 
-A lightweight Flutter web package for cross-tab communication using the BroadcastChannel API.
+Cross-tab **sync & dedup primitives** for Flutter web. tang0 turns the fiddly,
+copy-pasted patterns of multi-tab coordination — "who else is here", "only one
+tab does this", "merge concurrent edits", "catch a new tab up" — into small,
+composable, tested building blocks over `BroadcastChannel` and the Web Locks API.
 
-## What it does
+Web-only. No crypto, no heavy widgets, no code generation.
 
-Tang0 provides composable primitives for synchronizing state and events between browser tabs—no crypto, no heavy widgets, just the essentials.
+## Why
 
-## Features
+Every non-trivial web app eventually hand-rolls cross-tab logic: a localStorage
+presence heartbeat here, a "save-lock" race there, a versioned last-write-wins
+merge, a localStorage read to hydrate a fresh tab. It's subtle (Zone capture,
+self-echo, stale leaders) and gets duplicated across features. tang0 provides the
+primitives once, correctly, with honest guarantees.
 
-- **`Tang0Channel`** — BroadcastChannel wrapper with multi-listener support, payload hooks, and inner JSON mutators
-- **`T0SyncVar<T>`** — `ValueNotifier`-based state sync across tabs with built-in codecs
-- **`T0ReactiveStream<T>`** — `ChangeNotifier` + broadcast stream for cross-tab events
-- **`T0DispatchPool`** — global rate limiter/queue with optional coalescing
-- **`SyncEnum`** — control sync direction (`twoWay`, `uploadOnly`, `downloadOnly`, `uploadWithDelay`)
-- **Codec registry** — built-in support for primitives, `DateTime`, `Uri`, and JSON maps/lists
+## Layers
 
-## Installation
-
-```yaml
-dependencies:
-  tang0: ^0.9.0
+```
+Presets      T0SyncVar · T0ReactiveStream · T0TabDeduper · T0SharedDraft
+Protocol     T0Presence · T0Leader · T0SoftLock · T0Rpc · T0Hydrator
+CRDT         T0LwwRegister
+Core         T0Bus · T0Store · T0DispatchPool · T0Identity · T0Envelope
+Platform     T0Platform (injectable: clock, storage, channel, Web Locks)
 ```
 
-```bash
-flutter pub add tang0
-```
+The platform surface is injectable, so the whole protocol is unit-tested in pure
+Dart against an in-memory fake that simulates several tabs — no browser needed.
 
-## Quick Start
-
-### Synced State (T0SyncVar)
+## Quick start
 
 ```dart
 import 'package:tang0/tang0.dart';
 
-// Create a synced counter (two-way by default)
-final counter = T0SyncVar<int>(
-  channelId: 'app_sync',
-  key: 'counter',
-  initialValue: 0,
-);
-
-// Use like a ValueNotifier
-counter.value++;          // broadcasts to other tabs
+// A value that stays in sync across tabs (last-write-wins + catch-up):
+final counter = T0SyncVar<int>(scope: 'app', key: 'counter', initialValue: 0);
+counter.value++;                       // broadcasts, persists, coalesces
 counter.addListener(() => print(counter.value));
 
-// Dispose when done
-counter.dispose();
+// Who else has the app open, with awareness metadata:
+final presence = T0Presence('app', meta: {'name': 'Ada'});
+presence.addListener(() => print('${presence.count} tabs'));
+
+// Elect ONE tab to own a resource (true mutex via Web Locks):
+final leader = T0Leader('socket');
+await leader.runIfLeader(() => openWebSocket());   // no-op on non-leaders
 ```
 
-### One-Way Upload with Delay
+## Leader election: honest guarantees
 
-```dart
-final draft = T0SyncVar<String>(
-  channelId: 'editor',
-  key: 'draft',
-  initialValue: '',
-  mode: SyncEnum.uploadWithDelay,
-  uploadDelay: Duration(milliseconds: 500),
-);
-```
+tang0 deliberately splits two different needs instead of fusing them behind one
+misleading API:
 
-### Event Stream (T0ReactiveStream)
+- **`T0Leader`** — a **true mutex** backed by `navigator.locks`. Exactly one tab
+  holds leadership; the browser releases it instantly if that tab crashes.
+  `runIfLeader` / `withLeadership` are the real API; `isLeader` is a best-effort
+  UI hint only. If Web Locks are unavailable it **fails loud** rather than
+  silently degrading.
+- **`T0SoftLock`** — an explicitly **advisory** localStorage lease for cases where
+  a transient double-holder is cheap (e.g. a redundant idempotent autosave). It
+  never calls itself a leader.
 
-```dart
-final events = T0ReactiveStream<String>(
-  channelId: 'app_events',
-  key: 'toast',
-);
+## Presets
 
-events.stream.listen((msg) => showToast(msg));
-events.add('Hello from another tab!');
-```
+- **`T0SyncVar<T>`** — synced `ValueNotifier` with LWW conflict resolution and
+  new-tab catch-up.
+- **`T0ReactiveStream<T>`** — fire-and-forget cross-tab events.
+- **`T0TabDeduper`** — keep the oldest N tabs, ask the rest to close.
+- **`T0SharedDraft<T>`** — a shared editing session (synced draft + presence +
+  best-effort save coordination), the shape real apps hand-roll in hundreds of
+  lines.
 
-### Custom Codec
-
-```dart
-class User {
-  final int id;
-  final String name;
-  User(this.id, this.name);
-}
-
-class UserCodec extends SyncVarCodec<User> {
-  @override
-  Object? encode(User u) => {'id': u.id, 'name': u.name};
-
-  @override
-  User decode(Object? v) {
-    final m = v as Map;
-    return User(m['id'] as int, m['name'] as String);
-  }
-}
-
-// Register globally
-SyncVarCodecs.register<User>(UserCodec());
-
-// Now you can sync User objects
-final userVar = T0SyncVar<User>(
-  channelId: 'users',
-  key: 'current',
-  initialValue: User(1, 'Alice'),
-);
-```
-
-### JSON Hooks (Inner-rim Mutators)
-
-```dart
-// Inject a timestamp into every outgoing message
-Tang0Channel.jsonOutbound = (map) => {...map, 'ts': DateTime.now().millisecondsSinceEpoch};
-
-// Strip or transform incoming fields
-Tang0Channel.jsonInbound = (map) {
-  map.remove('debug');
-  return map;
-};
-```
-
-### Rate Limiting (T0DispatchPool)
-
-```dart
-T0DispatchPool.instance.configure(
-  interval: Duration(milliseconds: 100),
-  maxPerInterval: 20,
-  maxQueueSize: 200,
-);
-```
-
-## Example App
-
-The `example/` folder contains two independent demos:
-
-| Demo | Entrypoint | Description |
-|------|------------|-------------|
-| Timer | `lib/t0t_timer_main.dart` | Synced countdown timer with pause/resume across tabs |
-| Tab Dedup | `lib/tab_dedup_main.dart` | Presence heartbeat; auto-close when > 4 tabs |
-
-Run one of them:
+## Example
 
 ```bash
-cd example
-flutter run -d chrome -t lib/t0t_timer_main.dart
+cd example && flutter run -d chrome
 ```
 
-> **Note:** The presets (`T0TTimer`, `T0TabDeduper`) are internal and not exported. They live in `lib/src/templates/` and are intended as reference implementations.
+Open the URL in several tabs to watch leadership, a synced counter, presence, and
+tab-dedup react live.
 
-## Web Only
+## Testing
 
-Tang0 relies on `BroadcastChannel`, which is only available in browsers. Mobile and desktop Flutter targets are not supported.
+```bash
+flutter test --platform chrome
+```
 
-## License
-
-MIT
-
+tang0 is web-only, so its tests run under headless Chrome (the real target),
+driving the protocol through the in-memory fake platform for deterministic
+multi-tab scenarios.
