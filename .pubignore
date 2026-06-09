@@ -1,3 +1,4 @@
 # Exclude memory bank documentation
 memory-bank/
 build/
+example/pubspec.lock
